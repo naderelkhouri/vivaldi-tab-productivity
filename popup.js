@@ -139,6 +139,23 @@ async function loadData() {
   document.getElementById("timeNeutral").textContent = formatTime(totalNeutSeconds);
   document.getElementById("timeDistracting").textContent = formatTime(totalDistSeconds);
 
+  // Destaca com animação o card que está acumulando tempo agora
+  const activeDom = response.activeDomain;
+  const cardProd = document.querySelector(".card-productive");
+  const cardNeut = document.querySelector(".card-neutral");
+  const cardDist = document.querySelector(".card-distracting");
+
+  cardProd.classList.remove("is-ticking");
+  cardNeut.classList.remove("is-ticking");
+  cardDist.classList.remove("is-ticking");
+
+  if (activeDom && dailyStats[activeDom]) {
+    const cat = dailyStats[activeDom].category;
+    if (cat === "productive") cardProd.classList.add("is-ticking");
+    else if (cat === "distracting") cardDist.classList.add("is-ticking");
+    else cardNeut.classList.add("is-ticking");
+  }
+
   // Score Badge
   const totalTracked = totalProdSeconds + totalNeutSeconds + totalDistSeconds;
   const scoreBadge = document.getElementById("scoreBadge");
