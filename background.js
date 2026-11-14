@@ -353,4 +353,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+
+  if (message.type === "RESET_TODAY_STATS") {
+    (async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const data = await chrome.storage.local.get(["dailyStats"]);
+      const dailyStats = data.dailyStats || {};
+      delete dailyStats[today];
+      await chrome.storage.local.set({ dailyStats });
+      
+      // Reseta timestamp para não computar minutos acumulados da aba ativa
+      lastTimestamp = Date.now();
+      updateBadge(null);
+      await logEvent("ACTION", "DAILY_STATS_RESET", { date: today });
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
 });

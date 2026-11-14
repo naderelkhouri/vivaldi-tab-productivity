@@ -467,17 +467,10 @@ document.getElementById("clearTelemetryBtn").addEventListener("click", async () 
 
 // Resetar estatísticas de hoje
 document.getElementById("clearDataBtn").addEventListener("click", async () => {
-  if (confirm("Zerar as estatísticas de produtividade do dia de hoje?")) {
-    const today = new Date().toISOString().slice(0, 10);
-    if (isContextValid()) {
-      try {
-        const storage = await chrome.storage.local.get(["dailyStats"]);
-        const dailyStats = storage.dailyStats || {};
-        delete dailyStats[today];
-        await chrome.storage.local.set({ dailyStats });
-        loadData();
-      } catch (e) {}
-    }
+  const res = await safeSendMessage({ type: "RESET_TODAY_STATS" });
+  if (res && res.success) {
+    showToast("Estatísticas de hoje zeradas com sucesso!");
+    loadData();
   }
 });
 
