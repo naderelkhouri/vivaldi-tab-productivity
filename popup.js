@@ -3,6 +3,8 @@
 let currentRules = { productive: [], distracting: [] };
 let cachedTelemetryLogs = [];
 let updateIntervalId = null;
+let currentFilterCategory = "all";
+let currentSearchTerm = "";
 
 // Captura global de rejeições de promessa não tratadas (ex: quando o Service Worker é recarregado)
 window.addEventListener("unhandledrejection", (event) => {
@@ -202,12 +204,33 @@ async function renderTabsList(dailyStats) {
   const tabsList = document.getElementById("tabsList");
   tabsList.innerHTML = "";
 
-  if (tabs.length === 0) {
-    tabsList.innerHTML = `<div class="empty-state">Nenhuma aba encontrada</div>`;
+  // Aplica filtros de categoria e busca textual
+  const filteredTabs = tabs.filter(tab => {
+    const domain = getDomain(tab.url).toLowerCase();
+    const title = (tab.title || "").toLowerCase();
+    const domainData = dailyStats[domain] || { category: "neutral" };
+    const category = domainData.category;
+
+    // Filtro por Chip
+    if (currentFilterCategory !== "all" && category !== currentFilterCategory) {
+      return false;
+    }
+
+    // Filtro por Busca de Texto
+    if (currentSearchTerm) {
+      const match = domain.includes(currentSearchTerm) || title.includes(currentSearchTerm);
+      if (!match) return false;
+    }
+
+    return true;
+  });
+
+  if (filteredTabs.length === 0) {
+    tabsList.innerHTML = `<div class="empty-state">Nenhuma aba corresponde ao filtro.</div>`;
     return;
   }
 
-  tabs.forEach(tab => {
+  filteredTabs.forEach(tab => {
     const domain = getDomain(tab.url);
     const domainData = dailyStats[domain] || { seconds: 0, category: "neutral" };
     
@@ -465,6 +488,21 @@ document.getElementById("openTabBtn").addEventListener("click", () => {
   if (isContextValid()) {
     chrome.tabs.create({ url: chrome.runtime.getURL("popup.html") });
   }
+});
+
+// Controles de Busca e Filtros das Abas
+document.getElementById("tabSearchInput").addEventListener("input", (e) => {
+  currentSearchTerm = e.target.value.trim().toLowerCase();
+  loadData();
+});
+
+document.querySelectorAll(".chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    currentFilterCategory = chip.getAttribute("data-filter");
+    loadData();
+  });
 });
 
 // Inicialização

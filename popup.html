@@ -61,6 +61,17 @@
       <button id="refreshBtn" title="Atualizar">↻</button>
     </div>
 
+    <!-- Barra de Filtro e Busca de Abas -->
+    <div class="tabs-filter-bar">
+      <input type="text" id="tabSearchInput" placeholder="🔍 Buscar por título ou domínio..." />
+      <div class="filter-chips">
+        <button class="chip active" data-filter="all">Todas</button>
+        <button class="chip" data-filter="productive">🟢 Produtivo</button>
+        <button class="chip" data-filter="neutral">🔵 Neutro</button>
+        <button class="chip" data-filter="distracting">🔴 Distração</button>
+      </div>
+    </div>
+
     <div id="tabsList" class="tabs-list">
       <div class="empty-state">Carregando abas...</div>
     </div>
