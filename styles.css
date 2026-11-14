@@ -15,14 +15,14 @@
 body {
   width: 100%;
   max-width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   margin: 0;
-  padding: 16px;
+  padding: 12px 14px 8px 14px;
   background-color: var(--bg-color);
   color: var(--text-main);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   box-sizing: border-box;
-  overflow-x: hidden;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -113,6 +113,8 @@ h2 {
   display: none;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel-content.active {
@@ -213,12 +215,15 @@ h2 {
 }
 
 .tabs-list {
-  max-height: 220px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  padding-right: 2px;
 }
 
 .tab-item {
@@ -432,6 +437,13 @@ h2 {
 .rules-form input { flex: 2; }
 .rules-form select { flex: 1.5; }
 
+.rules-lists {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .rules-lists h4 {
   font-size: 12px;
   margin: 0 0 8px 0;
@@ -439,7 +451,9 @@ h2 {
 }
 
 .rules-list-container {
-  max-height: 220px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -487,7 +501,9 @@ h2 {
 }
 
 .telemetry-logs-container {
-  max-height: 250px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
