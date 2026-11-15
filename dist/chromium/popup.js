@@ -208,6 +208,9 @@ async function loadData() {
   // 4. Histórico & RAM
   renderHistoryChart(allDailyStats);
   document.getElementById("ramSavedDisplay").textContent = `~${ramSaved} MB liberados`;
+
+  // 5. Atualizar lista de regras em ordem alfabética
+  renderRulesList();
 }
 
 // Atualiza barra de orçamento de distração
@@ -383,10 +386,16 @@ function renderRulesList() {
   container.innerHTML = "";
 
   const allRules = [];
-  (currentRules.productive || []).forEach(d => allRules.push({ domain: d, cat: "productive" }));
-  (currentRules.distracting || []).forEach(d => allRules.push({ domain: d, cat: "distracting" }));
+  (currentRules.productive || []).forEach(d => allRules.push({ domain: String(d).trim().toLowerCase(), cat: "productive" }));
+  (currentRules.distracting || []).forEach(d => allRules.push({ domain: String(d).trim().toLowerCase(), cat: "distracting" }));
 
-  allRules.sort((a, b) => a.domain.localeCompare(b.domain));
+  // Ordenação estritamente alfabética A-Z (case-insensitive e acentos normatizados)
+  allRules.sort((a, b) => a.domain.localeCompare(b.domain, "pt-BR", { sensitivity: "base" }));
+
+  if (allRules.length === 0) {
+    container.innerHTML = `<div class="empty-state">Nenhum site classificado ainda.</div>`;
+    return;
+  }
 
   allRules.forEach(rule => {
     const item = document.createElement("div");
@@ -409,7 +418,6 @@ function renderRulesList() {
         category: "neutral"
       });
       loadData();
-      renderRulesList();
     });
 
     container.appendChild(item);
