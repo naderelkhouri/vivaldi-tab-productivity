@@ -32,6 +32,21 @@ function showReloadNotice() {
   toast.style.backgroundColor = "rgba(52, 152, 219, 0.25)";
 }
 
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatLocalDateTime(dateInput) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  return d.toLocaleString("pt-BR", {
+    timeZoneName: "short",
+    hour12: false
+  });
+}
+
 function formatTime(totalSeconds) {
   if (!totalSeconds || totalSeconds < 1) return "0s";
   const m = Math.floor(totalSeconds / 60);
@@ -283,7 +298,7 @@ function renderHistoryChart(allDailyStats) {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
+    days.push(getLocalDateString(d));
   }
 
   let maxSeconds = 1;
@@ -374,15 +389,15 @@ function renderTelemetryList() {
     return;
   }
 
-  cachedTelemetryLogs.slice(0, 60).forEach(log => {
+  cachedTelemetryLogs.slice(0, 80).forEach(log => {
     const div = document.createElement("div");
     div.className = `log-entry log-${log.level}`;
-    const time = new Date(log.timestamp).toLocaleTimeString();
+    const timeFormatted = log.localTime || formatLocalDateTime(log.timestamp);
 
     div.innerHTML = `
       <div class="log-meta">
         <span class="log-action">[${log.level}] ${log.action}</span>
-        <span>${time}</span>
+        <span>${timeFormatted}</span>
       </div>
       <div class="log-details">${JSON.stringify(log.details)}</div>
     `;
@@ -453,7 +468,7 @@ document.getElementById("exportTelemetryBtn").addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `telemetria-vivaldi-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `telemetria-vivaldi-${getLocalDateString()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 });

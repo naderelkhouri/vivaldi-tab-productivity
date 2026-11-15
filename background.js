@@ -1,5 +1,5 @@
 // background.js - Suite com Telemetria e Fechamento Robusto de Abas
-import { logEvent } from "./logger.js";
+import { logEvent, getLocalDateString } from "./logger.js";
 
 let activeTabId = null;
 let activeDomain = null;
@@ -85,7 +85,7 @@ async function recordTimeSpent() {
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateString();
   const data = await chrome.storage.local.get(["dailyStats", "rules"]);
   const dailyStats = data.dailyStats || {};
   const rules = data.rules || DEFAULT_RULES;
@@ -226,7 +226,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "SYNC_AND_GET_STATS") {
     (async () => {
       await recordTimeSpent();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateString();
       const data = await chrome.storage.local.get(["dailyStats", "rules", "telemetry_logs"]);
       sendResponse({
         dailyStats: (data.dailyStats && data.dailyStats[today]) || {},
@@ -252,7 +252,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (category === "productive") rules.productive.push(domain);
       else if (category === "distracting") rules.distracting.push(domain);
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateString();
       const dailyStats = data.dailyStats || {};
       if (dailyStats[today] && dailyStats[today][domain]) {
         dailyStats[today][domain].category = category;
@@ -356,7 +356,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "RESET_TODAY_STATS") {
     (async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateString();
       const data = await chrome.storage.local.get(["dailyStats"]);
       const dailyStats = data.dailyStats || {};
       delete dailyStats[today];
