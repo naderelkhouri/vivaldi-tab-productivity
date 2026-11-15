@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Vivaldi Tab Productivity Tracker & Focus Suite",
-  "version": "2.5.0",
-  "description": "Monitoramento de produtividade, agrupamento inteligente de abas (Tab Stacking), telemetria e painel lateral para Vivaldi.",
+  "version": "2.6.0",
+  "description": "Produtividade, auto-hibernação de RAM, limpeza de duplicadas, agrupamento de abas e modo foco para Vivaldi.",
   "permissions": [
     "tabs",
     "tabGroups",

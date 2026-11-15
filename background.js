@@ -1,9 +1,12 @@
-// background.js - Suite com Telemetria e Fechamento Robusto de Abas
+// background.js - Suite Completa: Produtividade, Auto-Hibernação, Limite Diário, Duplicadas e Grupos
 import { logEvent, getLocalDateString } from "./logger.js";
 
 let activeTabId = null;
 let activeDomain = null;
 let lastTimestamp = Date.now();
+
+// Rastreamento de tempo de inatividade das abas para auto-hibernação
+const tabLastActiveTimes = {};
 
 const DEFAULT_RULES = {
   productive: [
@@ -15,6 +18,13 @@ const DEFAULT_RULES = {
     "youtube.com", "reddit.com", "twitter.com", "x.com", "facebook.com",
     "instagram.com", "tiktok.com", "netflix.com", "twitch.tv", "primevideo.com"
   ]
+};
+
+// Configurações padrão
+const DEFAULT_SETTINGS = {
+  autoDiscardEnabled: true,
+  autoDiscardMinutes: 20,
+  dailyDistractionLimitMinutes: 45 // 0 = desativado
 };
 
 let pomodoroState = {
@@ -41,6 +51,11 @@ function getDomain(url) {
 async function getRules() {
   const data = await chrome.storage.local.get(["rules"]);
   return data.rules || DEFAULT_RULES;
+}
+
+async function getSettings() {
+  const data = await chrome.storage.local.get(["settings"]);
+  return Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
 }
 
 function matchesRule(domain, ruleList) {
@@ -73,6 +88,41 @@ function updateBadge(score, category) {
     chrome.action.setBadgeBackgroundColor({ color: "#3498db" });
   } else {
     chrome.action.setBadgeBackgroundColor({ color: "#e74c3c" });
+  }
+}
+
+async function checkDistractionLimit(dailyStats, today) {
+  const settings = await getSettings();
+  if (!settings.dailyDistractionLimitMinutes || settings.dailyDistractionLimitMinutes <= 0) return;
+
+  let distSeconds = 0;
+  if (dailyStats && dailyStats[today]) {
+    for (const d of Object.values(dailyStats[today])) {
+      if (d.category === "distracting") distSeconds += d.seconds;
+    }
+  }
+
+  const limitSeconds = settings.dailyDistractionLimitMinutes * 60;
+  if (distSeconds >= limitSeconds) {
+    // Limite atingido
+    const alertedTodayKey = `limit_alerted_${today}`;
+    const storage = await chrome.storage.local.get([alertedTodayKey]);
+    if (!storage[alertedTodayKey]) {
+      await chrome.storage.local.set({ [alertedTodayKey]: true });
+      try {
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icons/icon48.png",
+          title: "Limite Diário de Distrações Atingido! 🛑",
+          message: `Você atingiu seu orçamento de ${settings.dailyDistractionLimitMinutes} minutos em sites de distração hoje.`,
+          priority: 2
+        });
+      } catch (e) {}
+      await logEvent("WARN", "DISTRACTION_DAILY_LIMIT_EXCEEDED", {
+        limitMinutes: settings.dailyDistractionLimitMinutes,
+        usedMinutes: Math.round(distSeconds / 60)
+      });
+    }
   }
 }
 
@@ -113,6 +163,11 @@ async function recordTimeSpent() {
   dailyStats[today][activeDomain].seconds += elapsedSeconds;
   await chrome.storage.local.set({ dailyStats });
 
+  // Checagem de limite de distração
+  if (category === "distracting") {
+    await checkDistractionLimit(dailyStats, today);
+  }
+
   let prod = 0, neut = 0, dist = 0;
   for (const d of Object.values(dailyStats[today])) {
     if (d.category === "productive") prod += d.seconds;
@@ -132,6 +187,7 @@ async function updateCurrentActiveTab() {
     if (tab && tab.url) {
       activeTabId = tab.id;
       activeDomain = getDomain(tab.url);
+      tabLastActiveTimes[tab.id] = Date.now();
       checkFocusModeDistraction(tab);
     } else {
       activeDomain = null;
@@ -161,6 +217,44 @@ async function checkFocusModeDistraction(tab) {
   }
 }
 
+// Rotina periódica de auto-hibernação de abas ociosas
+async function runAutoDiscardCheck() {
+  const settings = await getSettings();
+  if (!settings.autoDiscardEnabled) return;
+
+  const thresholdMs = (settings.autoDiscardMinutes || 20) * 60 * 1000;
+  const now = Date.now();
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    let discardedCount = 0;
+
+    for (const t of tabs) {
+      if (t.active || t.pinned || t.audible || t.discarded) continue;
+      
+      const lastActive = tabLastActiveTimes[t.id] || now;
+      if (now - lastActive >= thresholdMs) {
+        try {
+          await chrome.tabs.discard(t.id);
+          discardedCount++;
+        } catch (e) {}
+      }
+    }
+
+    if (discardedCount > 0) {
+      const data = await chrome.storage.local.get(["ramSavedMB"]);
+      const currentSaved = data.ramSavedMB || 0;
+      // Média estimada de 50MB economizados por aba suspensa
+      const newSaved = currentSaved + (discardedCount * 50);
+      await chrome.storage.local.set({ ramSavedMB: newSaved });
+      await logEvent("ACTION", "AUTO_DISCARD_TABS_EXECUTED", {
+        discardedCount,
+        estimatedMbSaved: discardedCount * 50
+      });
+    }
+  } catch (err) {}
+}
+
 // Inicialização
 (async () => {
   lastTimestamp = Date.now();
@@ -169,6 +263,7 @@ async function checkFocusModeDistraction(tab) {
   await logEvent("INFO", "SERVICE_WORKER_STARTED", { activeDomain });
 })();
 
+// Loop de 1s para tempo e pomodoro
 setInterval(async () => {
   await recordTimeSpent();
 
@@ -189,9 +284,18 @@ setInterval(async () => {
   }
 }, 1000);
 
+// Alarme para auto-hibernação a cada 2 minutos
+chrome.alarms.create("autoDiscardAlarm", { periodInMinutes: 2 });
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === "autoDiscardAlarm") {
+    await runAutoDiscardCheck();
+  }
+});
+
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   await recordTimeSpent();
   activeTabId = activeInfo.tabId;
+  tabLastActiveTimes[activeTabId] = Date.now();
   try {
     const tab = await chrome.tabs.get(activeTabId);
     activeDomain = getDomain(tab.url);
@@ -203,6 +307,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  tabLastActiveTimes[tabId] = Date.now();
   if (tabId === activeTabId && changeInfo.url) {
     await recordTimeSpent();
     activeDomain = getDomain(changeInfo.url);
@@ -227,15 +332,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       await recordTimeSpent();
       const today = getLocalDateString();
-      const data = await chrome.storage.local.get(["dailyStats", "rules", "telemetry_logs"]);
+      const data = await chrome.storage.local.get(["dailyStats", "rules", "telemetry_logs", "settings", "ramSavedMB"]);
       sendResponse({
         dailyStats: (data.dailyStats && data.dailyStats[today]) || {},
         allDailyStats: data.dailyStats || {},
         rules: data.rules || DEFAULT_RULES,
+        settings: Object.assign({}, DEFAULT_SETTINGS, data.settings || {}),
+        ramSavedMB: data.ramSavedMB || 0,
         telemetryLogs: data.telemetry_logs || [],
         activeDomain: activeDomain,
         pomodoro: pomodoroState
       });
+    })();
+    return true;
+  }
+
+  if (message.type === "UPDATE_SETTINGS") {
+    (async () => {
+      const current = await getSettings();
+      const updated = Object.assign({}, current, message.settings || {});
+      await chrome.storage.local.set({ settings: updated });
+      await logEvent("ACTION", "SETTINGS_UPDATED", updated);
+      sendResponse({ success: true, settings: updated });
     })();
     return true;
   }
@@ -280,13 +398,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "DISCARD_INACTIVE_TABS") {
     (async () => {
-      // Busca abas em TODAS as janelas ou na janela ativa
       const tabs = await chrome.tabs.query({});
       let discardedCount = 0;
       const discardedTabs = [];
 
       for (const t of tabs) {
-        if (!t.active && !t.pinned && !t.audible) {
+        if (!t.active && !t.pinned && !t.audible && !t.discarded) {
           try {
             await chrome.tabs.discard(t.id);
             discardedCount++;
@@ -295,12 +412,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
       }
 
+      if (discardedCount > 0) {
+        const data = await chrome.storage.local.get(["ramSavedMB"]);
+        const currentSaved = data.ramSavedMB || 0;
+        await chrome.storage.local.set({ ramSavedMB: currentSaved + (discardedCount * 50) });
+      }
+
       await logEvent("ACTION", "TABS_DISCARDED", {
         count: discardedCount,
         tabs: discardedTabs
       });
 
-      sendResponse({ discardedCount });
+      sendResponse({ discardedCount, ramSavedApproxMB: discardedCount * 50 });
+    })();
+    return true;
+  }
+
+  // Limpeza de Abas Duplicadas
+  if (message.type === "CLOSE_DUPLICATE_TABS") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ currentWindow: true });
+        const seenUrls = new Set();
+        let closedCount = 0;
+        const closedDetails = [];
+
+        // Prioriza manter a aba ativa caso seja uma das duplicadas
+        for (const t of tabs) {
+          if (t.active && t.url) {
+            seenUrls.add(t.url);
+          }
+        }
+
+        for (const t of tabs) {
+          if (t.pinned || !t.url) continue;
+
+          if (seenUrls.has(t.url)) {
+            if (!t.active) {
+              await chrome.tabs.remove(t.id);
+              closedCount++;
+              closedDetails.push(t.url);
+            }
+          } else {
+            seenUrls.add(t.url);
+          }
+        }
+
+        await logEvent("ACTION", "CLOSE_DUPLICATES_EXECUTED", { closedCount });
+        sendResponse({ success: true, closedCount });
+      } catch (err) {
+        await logEvent("ERROR", "CLOSE_DUPLICATES_FAILED", { error: err.message });
+        sendResponse({ success: false, error: err.message });
+      }
     })();
     return true;
   }
@@ -308,18 +471,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CLOSE_DISTRACTING_TABS") {
     (async () => {
       const rules = await getRules();
-      // Consulta TODAS as abas abertas no navegador
       const tabs = await chrome.tabs.query({});
       let closedCount = 0;
       const closedDomains = [];
-      const inspectedDomains = [];
 
       for (const t of tabs) {
         const dom = getDomain(t.url);
-        inspectedDomains.push({ domain: dom, active: t.active });
-
         if (dom && matchesRule(dom, rules.distracting)) {
-          // Fecha mesmo se estiver em outra janela, mas preserva a aba ativa onde o usuário estiver agora se desejado
           try {
             await chrome.tabs.remove(t.id);
             closedCount++;
@@ -332,46 +490,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       await logEvent("ACTION", "CLOSE_DISTRACTING_TABS_EXECUTED", {
         closedCount,
-        closedDomains,
-        distractingRules: rules.distracting,
-        totalTabsInspected: tabs.length
+        closedDomains
       });
 
-      sendResponse({
-        closedCount,
-        closedDomains,
-        inspectedCount: tabs.length
-      });
+      sendResponse({ closedCount, closedDomains, inspectedCount: tabs.length });
     })();
     return true;
   }
 
-  if (message.type === "CLEAR_TELEMETRY") {
-    (async () => {
-      await chrome.storage.local.set({ telemetry_logs: [] });
-      sendResponse({ success: true });
-    })();
-    return true;
-  }
-
-  if (message.type === "RESET_TODAY_STATS") {
-    (async () => {
-      const today = getLocalDateString();
-      const data = await chrome.storage.local.get(["dailyStats"]);
-      const dailyStats = data.dailyStats || {};
-      delete dailyStats[today];
-      await chrome.storage.local.set({ dailyStats });
-      
-      // Reseta timestamp para não computar minutos acumulados da aba ativa
-      lastTimestamp = Date.now();
-      updateBadge(null);
-      await logEvent("ACTION", "DAILY_STATS_RESET", { date: today });
-      sendResponse({ success: true });
-    })();
-    return true;
-  }
-
-  // Agrupamento por Domínio
   if (message.type === "GROUP_TABS_BY_DOMAIN") {
     (async () => {
       try {
@@ -391,7 +517,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let colorIdx = 0;
 
         for (const [dom, tabIds] of Object.entries(domainGroups)) {
-          if (tabIds.length >= 2) { // Agrupa quando há 2 ou mais abas do mesmo domínio
+          if (tabIds.length >= 2) {
             const groupId = await chrome.tabs.group({ tabIds: tabIds });
             const color = colorPalette[colorIdx % colorPalette.length];
             colorIdx++;
@@ -413,30 +539,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Agrupamento por Produtividade (Produtivo, Neutro, Distração)
   if (message.type === "GROUP_TABS_BY_CATEGORY") {
     (async () => {
       try {
         const rules = await getRules();
         const tabs = await chrome.tabs.query({ currentWindow: true });
-        const categoryGroups = {
-          productive: [],
-          neutral: [],
-          distracting: []
-        };
+        const categoryGroups = { productive: [], neutral: [], distracting: [] };
 
         for (const t of tabs) {
           if (t.pinned) continue;
           const dom = getDomain(t.url);
           if (!dom || dom === "Navegador" || dom === "Outro") continue;
 
-          if (matchesRule(dom, rules.productive)) {
-            categoryGroups.productive.push(t.id);
-          } else if (matchesRule(dom, rules.distracting)) {
-            categoryGroups.distracting.push(t.id);
-          } else {
-            categoryGroups.neutral.push(t.id);
-          }
+          if (matchesRule(dom, rules.productive)) categoryGroups.productive.push(t.id);
+          else if (matchesRule(dom, rules.distracting)) categoryGroups.distracting.push(t.id);
+          else categoryGroups.neutral.push(t.id);
         }
 
         let groupsCreated = 0;
@@ -463,6 +580,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await logEvent("ERROR", "GROUP_BY_CATEGORY_FAILED", { error: err.message });
         sendResponse({ success: false, error: err.message });
       }
+    })();
+    return true;
+  }
+
+  if (message.type === "CLEAR_TELEMETRY") {
+    (async () => {
+      await chrome.storage.local.set({ telemetry_logs: [] });
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
+
+  if (message.type === "RESET_TODAY_STATS") {
+    (async () => {
+      const today = getLocalDateString();
+      const data = await chrome.storage.local.get(["dailyStats"]);
+      const dailyStats = data.dailyStats || {};
+      delete dailyStats[today];
+      await chrome.storage.local.set({ dailyStats });
+      
+      lastTimestamp = Date.now();
+      updateBadge(null);
+      await logEvent("ACTION", "DAILY_STATS_RESET", { date: today });
+      sendResponse({ success: true });
     })();
     return true;
   }

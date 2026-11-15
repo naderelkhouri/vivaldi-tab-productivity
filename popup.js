@@ -1,15 +1,17 @@
-// popup.js - Controle resiliente a invalidação de contexto e reload
+// popup.js - Controle completo da Suite v2.6.0 com Auto-Hibernação, Limite, Duplicadas e Exportação
 
 let currentRules = { productive: [], distracting: [] };
+let cachedDailyStats = {};
+let cachedAllDailyStats = {};
 let cachedTelemetryLogs = [];
+let cachedSettings = { autoDiscardEnabled: true, autoDiscardMinutes: 20, dailyDistractionLimitMinutes: 45 };
 let updateIntervalId = null;
 let currentFilterCategory = "all";
 let currentSearchTerm = "";
 
-// Captura global de rejeições de promessa não tratadas (ex: quando o Service Worker é recarregado)
 window.addEventListener("unhandledrejection", (event) => {
   if (event.reason && (event.reason.message?.includes("Extension context invalidated") || event.reason.toString().includes("Extension context invalidated"))) {
-    event.preventDefault(); // Previne o erro vermelho no console do navegador
+    event.preventDefault();
     if (updateIntervalId) clearInterval(updateIntervalId);
     showReloadNotice();
   }
@@ -137,9 +139,13 @@ async function loadData() {
 
   const dailyStats = response.dailyStats || {};
   const allDailyStats = response.allDailyStats || {};
+  cachedDailyStats = dailyStats;
+  cachedAllDailyStats = allDailyStats;
   currentRules = response.rules || currentRules;
+  cachedSettings = response.settings || cachedSettings;
   cachedTelemetryLogs = response.telemetryLogs || [];
   const pomodoro = response.pomodoro;
+  const ramSaved = response.ramSavedMB || 0;
 
   // 1. Cards de tempo
   let totalProdSeconds = 0;
@@ -156,7 +162,7 @@ async function loadData() {
   document.getElementById("timeNeutral").textContent = formatTime(totalNeutSeconds);
   document.getElementById("timeDistracting").textContent = formatTime(totalDistSeconds);
 
-  // Destaca com animação o card que está acumulando tempo agora
+  // Destaca com animação o card ativo
   const activeDom = response.activeDomain;
   const cardProd = document.querySelector(".card-productive");
   const cardNeut = document.querySelector(".card-neutral");
@@ -172,6 +178,9 @@ async function loadData() {
     else if (cat === "distracting") cardDist.classList.add("is-ticking");
     else cardNeut.classList.add("is-ticking");
   }
+
+  // Barra de Orçamento de Distração
+  updateDistractionBudgetUI(totalDistSeconds, cachedSettings.dailyDistractionLimitMinutes);
 
   // Score Badge
   const totalTracked = totalProdSeconds + totalNeutSeconds + totalDistSeconds;
@@ -196,11 +205,43 @@ async function loadData() {
     document.getElementById("pomodoroToggleBtn").style.backgroundColor = pomodoro.active ? "var(--focus)" : "var(--productive)";
   }
 
-  // 4. Histórico
+  // 4. Histórico & RAM
   renderHistoryChart(allDailyStats);
+  document.getElementById("ramSavedDisplay").textContent = `~${ramSaved} MB liberados`;
 }
 
-// Renderiza abas abertas com segurança
+// Atualiza barra de orçamento de distração
+function updateDistractionBudgetUI(usedSeconds, limitMinutes) {
+  const box = document.getElementById("distractionBudgetBox");
+  if (!box) return;
+
+  if (!limitMinutes || limitMinutes <= 0) {
+    box.style.display = "none";
+    return;
+  }
+
+  box.style.display = "block";
+  const usedMinutes = Math.round(usedSeconds / 60);
+  const fill = document.getElementById("budgetProgressFill");
+  const label = document.getElementById("budgetUsageLabel");
+
+  const pct = Math.min(100, Math.round((usedMinutes / limitMinutes) * 100));
+  fill.style.width = `${pct}%`;
+  label.textContent = `${usedMinutes}m / ${limitMinutes}m`;
+
+  fill.classList.remove("budget-warning", "budget-exceeded");
+  if (pct >= 100) {
+    fill.classList.add("budget-exceeded");
+    label.style.color = "var(--distracting)";
+  } else if (pct >= 80) {
+    fill.classList.add("budget-warning");
+    label.style.color = "var(--focus)";
+  } else {
+    label.style.color = "var(--text-muted)";
+  }
+}
+
+// Renderiza abas abertas com filtros
 async function renderTabsList(dailyStats) {
   if (!isContextValid()) return;
 
@@ -219,19 +260,16 @@ async function renderTabsList(dailyStats) {
   const tabsList = document.getElementById("tabsList");
   tabsList.innerHTML = "";
 
-  // Aplica filtros de categoria e busca textual
   const filteredTabs = tabs.filter(tab => {
     const domain = getDomain(tab.url).toLowerCase();
     const title = (tab.title || "").toLowerCase();
     const domainData = dailyStats[domain] || { category: "neutral" };
     const category = domainData.category;
 
-    // Filtro por Chip
     if (currentFilterCategory !== "all" && category !== currentFilterCategory) {
       return false;
     }
 
-    // Filtro por Busca de Texto
     if (currentSearchTerm) {
       const match = domain.includes(currentSearchTerm) || title.includes(currentSearchTerm);
       if (!match) return false;
@@ -288,7 +326,7 @@ async function renderTabsList(dailyStats) {
   });
 }
 
-// Renderiza histórico
+// Renderiza histórico semanal
 function renderHistoryChart(allDailyStats) {
   const chartEl = document.getElementById("historyChart");
   if (!chartEl) return;
@@ -405,11 +443,82 @@ function renderTelemetryList() {
   });
 }
 
+// Exportar Relatório em Markdown
+document.getElementById("exportMarkdownBtn").addEventListener("click", () => {
+  const today = getLocalDateString();
+  const stats = cachedDailyStats || {};
+
+  let prodSec = 0, neutSec = 0, distSec = 0;
+  for (const item of Object.values(stats)) {
+    if (item.category === "productive") prodSec += item.seconds;
+    else if (item.category === "distracting") distSec += item.seconds;
+    else neutSec += item.seconds;
+  }
+
+  const total = prodSec + neutSec + distSec;
+  const score = total > 0 ? Math.round(((prodSec + (neutSec * 0.5)) / total) * 100) : 100;
+
+  let md = `# Relatório de Produtividade Vivaldi - ${today}\n\n`;
+  md += `- **Score de Foco**: ${score}%\n`;
+  md += `- **Tempo Produtivo**: ${formatTime(prodSec)}\n`;
+  md += `- **Tempo Neutro**: ${formatTime(neutSec)}\n`;
+  md += `- **Tempo de Distração**: ${formatTime(distSec)}\n\n`;
+  md += `## Detalhamento por Site\n\n`;
+  md += `| Domínio | Categoria | Tempo Gasto |\n`;
+  md += `| :--- | :---: | :--- |\n`;
+
+  const sorted = Object.entries(stats).sort((a, b) => b[1].seconds - a[1].seconds);
+  sorted.forEach(([dom, val]) => {
+    md += `| \`${dom}\` | ${val.category.toUpperCase()} | ${formatTime(val.seconds)} |\n`;
+  });
+
+  const blob = new Blob([md], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `relatorio-produtividade-${today}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast("Relatório Markdown exportado!");
+});
+
+// Exportar Relatório em CSV
+document.getElementById("exportCsvBtn").addEventListener("click", () => {
+  const today = getLocalDateString();
+  const stats = cachedDailyStats || {};
+
+  let csv = "Data,Dominio,Categoria,Segundos,Formatado\n";
+  for (const [dom, val] of Object.entries(stats)) {
+    csv += `"${today}","${dom}","${val.category}",${val.seconds},"${formatTime(val.seconds)}"\n`;
+  }
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `produtividade-${today}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast("Planilha CSV exportada!");
+});
+
 // Ações de Abas
 document.getElementById("discardTabsBtn").addEventListener("click", async () => {
   const res = await safeSendMessage({ type: "DISCARD_INACTIVE_TABS" });
   if (res) {
-    showToast(`${res.discardedCount} abas ociosas foram suspensas da memória RAM!`);
+    showToast(`${res.discardedCount} abas suspensas (~${res.ramSavedApproxMB} MB liberados)!`);
+    loadData();
+  }
+});
+
+document.getElementById("closeDuplicatesBtn").addEventListener("click", async () => {
+  const res = await safeSendMessage({ type: "CLOSE_DUPLICATE_TABS" });
+  if (res && res.success) {
+    if (res.closedCount > 0) {
+      showToast(`✓ ${res.closedCount} abas duplicadas fechadas com sucesso!`);
+    } else {
+      showToast(`Nenhuma aba duplicada encontrada nesta janela.`);
+    }
     loadData();
   }
 });
@@ -426,7 +535,7 @@ document.getElementById("closeDistractingBtn").addEventListener("click", async (
   }
 });
 
-// Ações de Agrupamento de Abas (Tab Stacking no Vivaldi)
+// Agrupamento de Abas
 document.getElementById("groupByDomainBtn").addEventListener("click", async () => {
   const res = await safeSendMessage({ type: "GROUP_TABS_BY_DOMAIN" });
   if (res && res.success) {
@@ -443,7 +552,7 @@ document.getElementById("groupByCategoryBtn").addEventListener("click", async ()
   const res = await safeSendMessage({ type: "GROUP_TABS_BY_CATEGORY" });
   if (res && res.success) {
     if (res.groupsCreated > 0) {
-      showToast(`✓ Abas agrupadas por categoria (Produtivo, Neutro, Distração)!`);
+      showToast(`✓ Abas agrupadas por categoria!`);
     } else {
       showToast(`Abas insuficientes para criar grupos de categoria.`, true);
     }
@@ -451,7 +560,7 @@ document.getElementById("groupByCategoryBtn").addEventListener("click", async ()
   }
 });
 
-// Ações do Pomodoro
+// Pomodoro
 document.getElementById("pomodoroToggleBtn").addEventListener("click", async () => {
   const currentText = document.getElementById("pomodoroToggleBtn").textContent;
   const action = currentText.includes("Iniciar") ? "START" : "PAUSE";
@@ -464,7 +573,7 @@ document.getElementById("pomodoroResetBtn").addEventListener("click", async () =
   loadData();
 });
 
-// Adicionar Regra
+// Salvar Regra
 document.getElementById("saveRuleBtn").addEventListener("click", async () => {
   const input = document.getElementById("newDomainInput");
   const cat = document.getElementById("newDomainCat").value;
@@ -485,6 +594,34 @@ document.getElementById("saveRuleBtn").addEventListener("click", async () => {
   showToast(`Regra salva para ${domain}!`);
   loadData();
   renderRulesList();
+});
+
+// Ajustes & Configurações
+function syncSettingsUI() {
+  document.getElementById("settingAutoDiscard").checked = cachedSettings.autoDiscardEnabled !== false;
+  document.getElementById("settingAutoDiscardTime").value = String(cachedSettings.autoDiscardMinutes || 20);
+  document.getElementById("settingDistractionLimit").value = String(cachedSettings.dailyDistractionLimitMinutes || 45);
+}
+
+document.getElementById("settingAutoDiscard").addEventListener("change", async (e) => {
+  cachedSettings.autoDiscardEnabled = e.target.checked;
+  await safeSendMessage({ type: "UPDATE_SETTINGS", settings: { autoDiscardEnabled: e.target.checked } });
+  showToast("Preferência salva!");
+});
+
+document.getElementById("settingAutoDiscardTime").addEventListener("change", async (e) => {
+  const val = parseInt(e.target.value, 10);
+  cachedSettings.autoDiscardMinutes = val;
+  await safeSendMessage({ type: "UPDATE_SETTINGS", settings: { autoDiscardMinutes: val } });
+  showToast(`Tempo de auto-hibernação alterado para ${val} min!`);
+});
+
+document.getElementById("settingDistractionLimit").addEventListener("change", async (e) => {
+  const val = parseInt(e.target.value, 10);
+  cachedSettings.dailyDistractionLimitMinutes = val;
+  await safeSendMessage({ type: "UPDATE_SETTINGS", settings: { dailyDistractionLimitMinutes: val } });
+  showToast(`Orçamento diário alterado para ${val} min!`);
+  loadData();
 });
 
 // Telemetria Exportar e Limpar
@@ -540,7 +677,9 @@ document.querySelectorAll(".chip").forEach(chip => {
 
 // Inicialização
 document.addEventListener("DOMContentLoaded", () => {
-  loadData();
+  loadData().then(() => {
+    syncSettingsUI();
+  });
   renderRulesList();
   updateIntervalId = setInterval(loadData, 1000);
 });

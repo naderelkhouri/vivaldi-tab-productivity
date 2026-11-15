@@ -19,10 +19,11 @@
     <!-- Navegação por abas dentro do popup -->
     <nav class="nav-tabs">
       <button class="nav-btn active" data-target="panel-tabs">Abas</button>
-      <button class="nav-btn" data-target="panel-focus">Modo Foco</button>
+      <button class="nav-btn" data-target="panel-focus">Foco</button>
       <button class="nav-btn" data-target="panel-history">Histórico</button>
       <button class="nav-btn" data-target="panel-rules">Regras</button>
-      <button class="nav-btn" data-target="panel-telemetry">Telemetria</button>
+      <button class="nav-btn" data-target="panel-settings">Ajustes</button>
+      <button class="nav-btn" data-target="panel-telemetry">Logs</button>
     </nav>
   </header>
 
@@ -43,13 +44,27 @@
       </div>
     </div>
 
-    <!-- Ações de Gerenciamento e Agrupamento de Abas -->
+    <!-- Barra de Orçamento Diário de Distração -->
+    <div id="distractionBudgetBox" class="budget-box">
+      <div class="budget-label-row">
+        <span>Orçamento de Distração Hoje</span>
+        <span id="budgetUsageLabel">0m / 45m</span>
+      </div>
+      <div class="budget-progress-bar">
+        <div id="budgetProgressFill" class="budget-progress-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- Ações Rápidas de Otimização de Abas -->
     <div class="quick-actions">
-      <button id="discardTabsBtn" class="action-btn" title="Suspende abas de fundo para liberar RAM">
+      <button id="discardTabsBtn" class="action-btn" title="Suspende abas ociosas da memória RAM">
         💤 Suspender Ociosas
       </button>
-      <button id="closeDistractingBtn" class="action-btn warning-action" title="Fecha abas com sites de distração">
-        🚫 Fechar Distrações
+      <button id="closeDuplicatesBtn" class="action-btn" title="Fecha abas com a mesma URL na janela">
+        🧹 Fechar Duplicadas
+      </button>
+      <button id="closeDistractingBtn" class="action-btn warning-action" title="Fecha abas de distração">
+        🚫 Distrações
       </button>
     </div>
 
@@ -104,13 +119,27 @@
     </div>
   </section>
 
-  <!-- Painel 3: Histórico e Tendências (Últimos 7 dias) -->
+  <!-- Painel 3: Histórico e Tendências (Últimos 7 dias) & Exportação -->
   <section id="panel-history" class="panel-content">
-    <div class="history-title">Desempenho dos Últimos 7 Dias</div>
+    <div class="history-title-row">
+      <span class="history-title">Desempenho dos Últimos 7 Dias</span>
+      <div class="export-buttons">
+        <button id="exportMarkdownBtn" class="mini-btn" title="Exportar Relatório em Markdown (Notion/Obsidian)">📋 MD</button>
+        <button id="exportCsvBtn" class="mini-btn" title="Exportar Relatório em Planilha CSV">📊 CSV</button>
+      </div>
+    </div>
+
     <div id="historyChart" class="history-chart"></div>
     <div class="history-legend">
       <span><span class="dot dot-prod"></span> Produtivo</span>
       <span><span class="dot dot-dist"></span> Distração</span>
+    </div>
+
+    <!-- Widget de Economia de Memória RAM -->
+    <div class="ram-savings-card">
+      <span class="ram-title">💾 Economia de Memória RAM</span>
+      <span class="ram-val" id="ramSavedDisplay">~0 MB liberados</span>
+      <span class="ram-sub">Abas ociosas suspensas da memória</span>
     </div>
   </section>
 
@@ -132,7 +161,44 @@
     </div>
   </section>
 
-  <!-- Painel 5: Telemetria & Logs de Diagnóstico -->
+  <!-- Painel 5: Ajustes & Automações -->
+  <section id="panel-settings" class="panel-content">
+    <div class="settings-group">
+      <h4>Auto-Hibernação de Abas (Memory Saver)</h4>
+      <label class="setting-toggle">
+        <input type="checkbox" id="settingAutoDiscard" checked />
+        <span>Hibernar abas inativas automaticamente</span>
+      </label>
+      <div class="setting-row">
+        <span>Tempo de inatividade:</span>
+        <select id="settingAutoDiscardTime">
+          <option value="10">10 minutos</option>
+          <option value="20" selected>20 minutos</option>
+          <option value="30">30 minutos</option>
+          <option value="60">1 hora</option>
+        </select>
+      </div>
+      <p class="setting-hint">Abas fixadas e com áudio nunca são suspensas.</p>
+    </div>
+
+    <div class="settings-group">
+      <h4>Orçamento Diário de Distração</h4>
+      <div class="setting-row">
+        <span>Limite máximo por dia:</span>
+        <select id="settingDistractionLimit">
+          <option value="0">Desativado</option>
+          <option value="15">15 minutos</option>
+          <option value="30">30 minutos</option>
+          <option value="45" selected>45 minutos</option>
+          <option value="60">1 hora</option>
+          <option value="90">1h 30m</option>
+        </select>
+      </div>
+      <p class="setting-hint">Emite um aviso na tela e notificação ao estourar a meta.</p>
+    </div>
+  </section>
+
+  <!-- Painel 6: Telemetria & Logs de Diagnóstico -->
   <section id="panel-telemetry" class="panel-content">
     <div class="telemetry-header">
       <span>Logs de Telemetria Contínua</span>
