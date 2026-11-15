@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Vivaldi Tab Productivity Tracker & Focus Suite",
-  "version": "2.6.0",
-  "description": "Produtividade, auto-hibernação de RAM, limpeza de duplicadas, agrupamento de abas e modo foco para Vivaldi.",
+  "name": "OmniTab Productivity Tracker & Focus Suite",
+  "version": "2.7.0",
+  "description": "Produtividade, auto-hibernação de RAM, limpeza de duplicadas, agrupamento de abas e modo foco para Vivaldi, Chrome, Edge, Brave, Opera e Arc.",
   "permissions": [
     "tabs",
     "tabGroups",
@@ -17,7 +17,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Produtividade & Foco Vivaldi"
+    "default_title": "OmniTab Produtividade & Foco"
   },
   "side_panel": {
     "default_path": "popup.html"

@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "OmniTab Productivity Tracker & Focus Suite (Firefox Edition)",
+  "version": "2.7.0",
+  "description": "Produtividade de abas, auto-hibernação de RAM, telemetria e modo foco para Firefox e Floorp.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "notifications"
+  ],
+  "background": {
+    "scripts": ["logger.js", "background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OmniTab Produtividade & Foco"
+  },
+  "sidebar_action": {
+    "default_panel": "popup.html",
+    "default_title": "OmniTab Produtividade",
+    "default_icon": "icons/icon48.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "omnitab-productivity@local",
+      "strict_min_version": "109.0"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

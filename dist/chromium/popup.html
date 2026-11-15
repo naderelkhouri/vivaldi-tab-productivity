@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Vivaldi Tab Productivity Suite</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="title-row">
+      <h2>Vivaldi Productivity Suite</h2>
+      <div class="header-right">
+        <span id="scoreBadge" class="score-badge">--%</span>
+        <button id="openTabBtn" class="icon-header-btn" title="Abrir em aba cheia / janela dedicada">↗</button>
+      </div>
+    </div>
+    
+    <!-- Navegação por abas dentro do popup -->
+    <nav class="nav-tabs">
+      <button class="nav-btn active" data-target="panel-tabs">Abas</button>
+      <button class="nav-btn" data-target="panel-focus">Foco</button>
+      <button class="nav-btn" data-target="panel-history">Histórico</button>
+      <button class="nav-btn" data-target="panel-rules">Regras</button>
+      <button class="nav-btn" data-target="panel-settings">Ajustes</button>
+      <button class="nav-btn" data-target="panel-telemetry">Logs</button>
+    </nav>
+  </header>
+
+  <!-- Painel 1: Abas Abertas e Resumo Diário -->
+  <section id="panel-tabs" class="panel-content active">
+    <div class="summary-cards">
+      <div class="card card-productive">
+        <span class="card-label">Produtivo</span>
+        <span class="card-val" id="timeProductive">0s</span>
+      </div>
+      <div class="card card-neutral">
+        <span class="card-label">Neutro</span>
+        <span class="card-val" id="timeNeutral">0s</span>
+      </div>
+      <div class="card card-distracting">
+        <span class="card-label">Distração</span>
+        <span class="card-val" id="timeDistracting">0s</span>
+      </div>
+    </div>
+
+    <!-- Barra de Orçamento Diário de Distração -->
+    <div id="distractionBudgetBox" class="budget-box">
+      <div class="budget-label-row">
+        <span>Orçamento de Distração Hoje</span>
+        <span id="budgetUsageLabel">0m / 45m</span>
+      </div>
+      <div class="budget-progress-bar">
+        <div id="budgetProgressFill" class="budget-progress-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- Ações Rápidas de Otimização de Abas -->
+    <div class="quick-actions">
+      <button id="discardTabsBtn" class="action-btn" title="Suspende abas ociosas da memória RAM">
+        💤 Suspender Ociosas
+      </button>
+      <button id="closeDuplicatesBtn" class="action-btn" title="Fecha abas com a mesma URL na janela">
+        🧹 Fechar Duplicadas
+      </button>
+      <button id="closeDistractingBtn" class="action-btn warning-action" title="Fecha abas de distração">
+        🚫 Distrações
+      </button>
+    </div>
+
+    <!-- Linha de Agrupamento Vivaldi (Tab Stacking) -->
+    <div class="quick-actions group-actions">
+      <button id="groupByDomainBtn" class="action-btn" title="Agrupa abas do mesmo domínio em pilhas">
+        📑 Pilha por Site
+      </button>
+      <button id="groupByCategoryBtn" class="action-btn" title="Agrupa abas em pilhas de Produtivo, Neutro e Distração">
+        🏷️ Pilha por Categoria
+      </button>
+    </div>
+
+    <!-- Status toast de feedback -->
+    <div id="actionFeedback" class="action-feedback"></div>
+
+    <div class="section-title">
+      <span>Abas Abertas Agora</span>
+      <button id="refreshBtn" title="Atualizar">↻</button>
+    </div>
+
+    <!-- Barra de Filtro e Busca de Abas -->
+    <div class="tabs-filter-bar">
+      <input type="text" id="tabSearchInput" placeholder="🔍 Buscar por título ou domínio..." />
+      <div class="filter-chips">
+        <button class="chip active" data-filter="all">Todas</button>
+        <button class="chip" data-filter="productive">🟢 Produtivo</button>
+        <button class="chip" data-filter="neutral">🔵 Neutro</button>
+        <button class="chip" data-filter="distracting">🔴 Distração</button>
+      </div>
+    </div>
+
+    <div id="tabsList" class="tabs-list">
+      <div class="empty-state">Carregando abas...</div>
+    </div>
+  </section>
+
+  <!-- Painel 2: Modo Foco & Pomodoro -->
+  <section id="panel-focus" class="panel-content">
+    <div class="pomodoro-box">
+      <div class="pomodoro-mode-badge" id="pomodoroMode">FOCO</div>
+      <div class="pomodoro-clock" id="pomodoroClock">25:00</div>
+      
+      <div class="pomodoro-controls">
+        <button id="pomodoroToggleBtn" class="primary-btn">Iniciar Foco</button>
+        <button id="pomodoroResetBtn" class="secondary-btn">Resetar</button>
+      </div>
+
+      <div class="pomodoro-tip">
+        Ao ativar o Modo Foco, abrir sites de <strong>Distração</strong> gera notificações e registros de telemetria automáticos.
+      </div>
+    </div>
+  </section>
+
+  <!-- Painel 3: Histórico e Tendências (Últimos 7 dias) & Exportação -->
+  <section id="panel-history" class="panel-content">
+    <div class="history-title-row">
+      <span class="history-title">Desempenho dos Últimos 7 Dias</span>
+      <div class="export-buttons">
+        <button id="exportMarkdownBtn" class="mini-btn" title="Exportar Relatório em Markdown (Notion/Obsidian)">📋 MD</button>
+        <button id="exportCsvBtn" class="mini-btn" title="Exportar Relatório em Planilha CSV">📊 CSV</button>
+      </div>
+    </div>
+
+    <div id="historyChart" class="history-chart"></div>
+    <div class="history-legend">
+      <span><span class="dot dot-prod"></span> Produtivo</span>
+      <span><span class="dot dot-dist"></span> Distração</span>
+    </div>
+
+    <!-- Widget de Economia de Memória RAM -->
+    <div class="ram-savings-card">
+      <span class="ram-title">💾 Economia de Memória RAM</span>
+      <span class="ram-val" id="ramSavedDisplay">~0 MB liberados</span>
+      <span class="ram-sub">Abas ociosas suspensas da memória</span>
+    </div>
+  </section>
+
+  <!-- Painel 4: Gerenciamento de Regras -->
+  <section id="panel-rules" class="panel-content">
+    <div class="rules-form">
+      <input type="text" id="newDomainInput" placeholder="ex: youtube.com ou figma.com" />
+      <select id="newDomainCat">
+        <option value="productive">Produtivo</option>
+        <option value="distracting">Distração</option>
+        <option value="neutral">Neutro</option>
+      </select>
+      <button id="saveRuleBtn" class="primary-btn">Salvar</button>
+    </div>
+
+    <div class="rules-lists">
+      <h4>Sites Classificados</h4>
+      <div id="rulesListContainer" class="rules-list-container"></div>
+    </div>
+  </section>
+
+  <!-- Painel 5: Ajustes & Automações -->
+  <section id="panel-settings" class="panel-content">
+    <div class="settings-group">
+      <h4>Auto-Hibernação de Abas (Memory Saver)</h4>
+      <label class="setting-toggle">
+        <input type="checkbox" id="settingAutoDiscard" checked />
+        <span>Hibernar abas inativas automaticamente</span>
+      </label>
+      <div class="setting-row">
+        <span>Tempo de inatividade:</span>
+        <select id="settingAutoDiscardTime">
+          <option value="10">10 minutos</option>
+          <option value="20" selected>20 minutos</option>
+          <option value="30">30 minutos</option>
+          <option value="60">1 hora</option>
+        </select>
+      </div>
+      <p class="setting-hint">Abas fixadas e com áudio nunca são suspensas.</p>
+    </div>
+
+    <div class="settings-group">
+      <h4>Orçamento Diário de Distração</h4>
+      <div class="setting-row">
+        <span>Limite máximo por dia:</span>
+        <select id="settingDistractionLimit">
+          <option value="0">Desativado</option>
+          <option value="15">15 minutos</option>
+          <option value="30">30 minutos</option>
+          <option value="45" selected>45 minutos</option>
+          <option value="60">1 hora</option>
+          <option value="90">1h 30m</option>
+        </select>
+      </div>
+      <p class="setting-hint">Emite um aviso na tela e notificação ao estourar a meta.</p>
+    </div>
+  </section>
+
+  <!-- Painel 6: Telemetria & Logs de Diagnóstico -->
+  <section id="panel-telemetry" class="panel-content">
+    <div class="telemetry-header">
+      <span>Logs de Telemetria Contínua</span>
+      <div class="telemetry-actions">
+        <button id="exportTelemetryBtn" class="secondary-btn" title="Baixar JSON de Telemetria">Exportar</button>
+        <button id="clearTelemetryBtn" class="secondary-btn" title="Limpar Logs">Limpar</button>
+      </div>
+    </div>
+    <div id="telemetryLogsContainer" class="telemetry-logs-container">
+      <div class="empty-state">Nenhum log registrado.</div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <button id="clearDataBtn" class="secondary-btn">Resetar Hoje</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
