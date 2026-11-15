@@ -370,4 +370,100 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+
+  // Agrupamento por Domínio
+  if (message.type === "GROUP_TABS_BY_DOMAIN") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ currentWindow: true });
+        const domainGroups = {};
+
+        for (const t of tabs) {
+          if (t.pinned) continue;
+          const dom = getDomain(t.url);
+          if (!dom || dom === "Navegador" || dom === "Outro") continue;
+          if (!domainGroups[dom]) domainGroups[dom] = [];
+          domainGroups[dom].push(t.id);
+        }
+
+        let groupsCreated = 0;
+        const colorPalette = ["blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
+        let colorIdx = 0;
+
+        for (const [dom, tabIds] of Object.entries(domainGroups)) {
+          if (tabIds.length >= 2) { // Agrupa quando há 2 ou mais abas do mesmo domínio
+            const groupId = await chrome.tabs.group({ tabIds: tabIds });
+            const color = colorPalette[colorIdx % colorPalette.length];
+            colorIdx++;
+            await chrome.tabGroups.update(groupId, {
+              title: dom,
+              color: color
+            });
+            groupsCreated++;
+          }
+        }
+
+        await logEvent("ACTION", "GROUP_TABS_BY_DOMAIN_EXECUTED", { groupsCreated });
+        sendResponse({ success: true, groupsCreated });
+      } catch (err) {
+        await logEvent("ERROR", "GROUP_BY_DOMAIN_FAILED", { error: err.message });
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  // Agrupamento por Produtividade (Produtivo, Neutro, Distração)
+  if (message.type === "GROUP_TABS_BY_CATEGORY") {
+    (async () => {
+      try {
+        const rules = await getRules();
+        const tabs = await chrome.tabs.query({ currentWindow: true });
+        const categoryGroups = {
+          productive: [],
+          neutral: [],
+          distracting: []
+        };
+
+        for (const t of tabs) {
+          if (t.pinned) continue;
+          const dom = getDomain(t.url);
+          if (!dom || dom === "Navegador" || dom === "Outro") continue;
+
+          if (matchesRule(dom, rules.productive)) {
+            categoryGroups.productive.push(t.id);
+          } else if (matchesRule(dom, rules.distracting)) {
+            categoryGroups.distracting.push(t.id);
+          } else {
+            categoryGroups.neutral.push(t.id);
+          }
+        }
+
+        let groupsCreated = 0;
+        const config = {
+          productive: { title: "🟢 Produtivo", color: "green" },
+          neutral: { title: "🔵 Neutro / Pesquisa", color: "blue" },
+          distracting: { title: "🔴 Distração", color: "red" }
+        };
+
+        for (const [cat, tabIds] of Object.entries(categoryGroups)) {
+          if (tabIds.length >= 2) {
+            const groupId = await chrome.tabs.group({ tabIds: tabIds });
+            await chrome.tabGroups.update(groupId, {
+              title: config[cat].title,
+              color: config[cat].color
+            });
+            groupsCreated++;
+          }
+        }
+
+        await logEvent("ACTION", "GROUP_TABS_BY_CATEGORY_EXECUTED", { groupsCreated });
+        sendResponse({ success: true, groupsCreated });
+      } catch (err) {
+        await logEvent("ERROR", "GROUP_BY_CATEGORY_FAILED", { error: err.message });
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
 });

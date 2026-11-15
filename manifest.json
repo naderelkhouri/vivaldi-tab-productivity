@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Vivaldi Tab Productivity Tracker & Focus Suite",
-  "version": "2.3.0",
-  "description": "Monitoramento de produtividade, telemetria contínua, modo Pomodoro e painel lateral nativo para Vivaldi.",
+  "version": "2.5.0",
+  "description": "Monitoramento de produtividade, agrupamento inteligente de abas (Tab Stacking), telemetria e painel lateral para Vivaldi.",
   "permissions": [
     "tabs",
+    "tabGroups",
     "storage",
     "alarms",
     "notifications",

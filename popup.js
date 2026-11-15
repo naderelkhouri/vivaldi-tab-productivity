@@ -426,6 +426,31 @@ document.getElementById("closeDistractingBtn").addEventListener("click", async (
   }
 });
 
+// Ações de Agrupamento de Abas (Tab Stacking no Vivaldi)
+document.getElementById("groupByDomainBtn").addEventListener("click", async () => {
+  const res = await safeSendMessage({ type: "GROUP_TABS_BY_DOMAIN" });
+  if (res && res.success) {
+    if (res.groupsCreated > 0) {
+      showToast(`✓ ${res.groupsCreated} pilhas de abas criadas por site!`);
+    } else {
+      showToast(`São necessárias pelo menos 2 abas do mesmo site para agrupar.`, true);
+    }
+    loadData();
+  }
+});
+
+document.getElementById("groupByCategoryBtn").addEventListener("click", async () => {
+  const res = await safeSendMessage({ type: "GROUP_TABS_BY_CATEGORY" });
+  if (res && res.success) {
+    if (res.groupsCreated > 0) {
+      showToast(`✓ Abas agrupadas por categoria (Produtivo, Neutro, Distração)!`);
+    } else {
+      showToast(`Abas insuficientes para criar grupos de categoria.`, true);
+    }
+    loadData();
+  }
+});
+
 // Ações do Pomodoro
 document.getElementById("pomodoroToggleBtn").addEventListener("click", async () => {
   const currentText = document.getElementById("pomodoroToggleBtn").textContent;
